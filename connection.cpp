@@ -9,10 +9,9 @@
 #include "encrypt.h"
 #include "fd_manager.h"
 
-
 int disable_anti_replay=0;//if anti_replay windows is diabled
 
-const int disable_conv_clear=0;//a udp connection in the multiplexer is called conversation in this program,conv for short.
+
 
 const int disable_conn_clear=0;//a raw connection is called conn.
 
@@ -75,154 +74,6 @@ conn_manager_t conn_manager;
 	}
 
 
-void server_clear_function(u64_t u64);
-
-conv_manager_t::conv_manager_t()
-	{
-		clear_it=conv_last_active_time.begin();
-		long long last_clear_time=0;
-		//clear_function=0;
-	}
-conv_manager_t::~conv_manager_t()
-	{
-		clear();
-	}
-	int conv_manager_t::get_size()
-	{
-		return conv_to_u64.size();
-	}
-	void conv_manager_t::reserve()
-	{
-		u64_to_conv.reserve(10007);
-		conv_to_u64.reserve(10007);
-		conv_last_active_time.reserve(10007);
-	}
-	void conv_manager_t::clear()
-	{
-		if(disable_conv_clear) return ;
-
-		if(program_mode==server_mode)
-		{
-			for(it=conv_to_u64.begin();it!=conv_to_u64.end();it++)
-			{
-				//int fd=int((it->second<<32u)>>32u);
-				server_clear_function(  it->second);
-			}
-		}
-		u64_to_conv.clear();
-		conv_to_u64.clear();
-		conv_last_active_time.clear();
-
-		clear_it=conv_last_active_time.begin();
-
-	}
-	u32_t conv_manager_t::get_new_conv()
-	{
-		u32_t conv=get_true_random_number_nz();
-		while(conv_to_u64.find(conv)!=conv_to_u64.end())
-		{
-			conv=get_true_random_number_nz();
-		}
-		return conv;
-	}
-	int conv_manager_t::is_conv_used(u32_t conv)
-	{
-		return conv_to_u64.find(conv)!=conv_to_u64.end();
-	}
-	int conv_manager_t::is_u64_used(u64_t u64)
-	{
-		return u64_to_conv.find(u64)!=u64_to_conv.end();
-	}
-	u32_t conv_manager_t::find_conv_by_u64(u64_t u64)
-	{
-		return u64_to_conv[u64];
-	}
-	u64_t conv_manager_t::find_u64_by_conv(u32_t conv)
-	{
-		return conv_to_u64[conv];
-	}
-	int conv_manager_t::update_active_time(u32_t conv)
-	{
-		return conv_last_active_time[conv]=get_current_time();
-	}
-	int conv_manager_t::insert_conv(u32_t conv,u64_t u64)
-	{
-		u64_to_conv[u64]=conv;
-		conv_to_u64[conv]=u64;
-		conv_last_active_time[conv]=get_current_time();
-		return 0;
-	}
-	int conv_manager_t::erase_conv(u32_t conv)
-	{
-		if(disable_conv_clear) return 0;
-		u64_t u64=conv_to_u64[conv];
-		if(program_mode==server_mode)
-		{
-			server_clear_function(u64);
-		}
-		conv_to_u64.erase(conv);
-		u64_to_conv.erase(u64);
-		conv_last_active_time.erase(conv);
-		return 0;
-	}
-	int conv_manager_t::clear_inactive(char * ip_port)
-	{
-		if(get_current_time()-last_clear_time>conv_clear_interval)
-		{
-			last_clear_time=get_current_time();
-			return clear_inactive0(ip_port);
-		}
-		return 0;
-	}
-	int conv_manager_t::clear_inactive0(char * ip_port)
-	{
-		if(disable_conv_clear) return 0;
-
-
-		//map<uint32_t,uint64_t>::iterator it;
-		int cnt=0;
-		it=clear_it;
-		int size=conv_last_active_time.size();
-		int num_to_clean=size/conv_clear_ratio+conv_clear_min;   //clear 1/10 each time,to avoid latency glitch
-
-		num_to_clean=min(num_to_clean,size);
-
-		u64_t current_time=get_current_time();
-		for(;;)
-		{
-			if(cnt>=num_to_clean) break;
-			if(conv_last_active_time.begin()==conv_last_active_time.end()) break;
-
-			if(it==conv_last_active_time.end())
-			{
-				it=conv_last_active_time.begin();
-			}
-
-			if( current_time -it->second  >conv_timeout )
-			{
-				//mylog(log_info,"inactive conv %u cleared \n",it->first);
-				old_it=it;
-				it++;
-				u32_t conv= old_it->first;
-				erase_conv(old_it->first);
-				if(ip_port==0)
-				{
-					mylog(log_info,"conv %x cleared\n",conv);
-				}
-				else
-				{
-					mylog(log_info,"[%s]conv %x cleared\n",ip_port,conv);
-				}
-			}
-			else
-			{
-				it++;
-			}
-			cnt++;
-		}
-		clear_it=it;
-		return 0;
-	}
 
 
 	 void conn_info_t::recover(const conn_info_t &conn_info)
@@ -268,18 +119,24 @@ conv_manager_t::~conv_manager_t()
 	}
 	void conn_info_t::prepare()
 	{
+		assert(blob==0);
 		blob=new blob_t;
-
-	}
-	conn_info_t::conn_info_t(const conn_info_t&b)
-	{
-		//mylog(log_error,"called!!!!!!!!!!!!!\n");
-		*this=b;
-		if(blob!=0)
+		if(program_mode==server_mode)
 		{
-			blob=new blob_t(*b.blob);
+			blob->conv_manager.s.additional_clear_function=server_clear_function;
+		}
+		else
+		{
+			assert(program_mode==client_mode);
 		}
 	}
+
+	conn_info_t::conn_info_t(const conn_info_t&b)
+	{
+		assert(0==1);
+		//mylog(log_error,"called!!!!!!!!!!!!!\n");
+	}
+
 	conn_info_t& conn_info_t::operator=(const conn_info_t& b)
 	  {
 		mylog(log_fatal,"not allowed\n");
@@ -316,7 +173,7 @@ conv_manager_t::~conv_manager_t()
  {
 	 ready_num=0;
 	 mp.reserve(10007);
-	 clear_it=mp.begin();
+	 //clear_it=mp.begin();
 	// timer_fd_mp.reserve(10007);
 	 const_id_mp.reserve(10007);
 	// udp_fd_mp.reserve(100007);
@@ -324,13 +181,13 @@ conv_manager_t::~conv_manager_t()
 	 //current_ready_ip=0;
 	// current_ready_port=0;
  }
- int conn_manager_t::exist(u32_t ip,uint16_t port)
+ int conn_manager_t::exist(address_t addr)
  {
-	 u64_t u64=0;
-	 u64=ip;
-	 u64<<=32u;
-	 u64|=port;
-	 if(mp.find(u64)!=mp.end())
+	 //u64_t u64=0;
+	 //u64=ip;
+	 //u64<<=32u;
+	 //u64|=port;
+	 if(mp.find(addr)!=mp.end())
 	 {
 		 return 1;
 	 }
@@ -346,33 +203,43 @@ conv_manager_t::~conv_manager_t()
 	 mp[u64];
 	 return 0;
  }*/
- conn_info_t *& conn_manager_t::find_insert_p(u32_t ip,uint16_t port)  //be aware,the adress may change after rehash
+ conn_info_t *& conn_manager_t::find_insert_p(address_t addr)  //be aware,the adress may change after rehash
  {
-	 u64_t u64=0;
-	 u64=ip;
-	 u64<<=32u;
-	 u64|=port;
-	 unordered_map<u64_t,conn_info_t*>::iterator it=mp.find(u64);
+	// u64_t u64=0;
+	 //u64=ip;
+	 //u64<<=32u;
+	 //u64|=port;
+	 unordered_map<address_t,conn_info_t*>::iterator it=mp.find(addr);
 	 if(it==mp.end())
 	 {
-		 mp[u64]=new conn_info_t;
+		 mp[addr]=new conn_info_t;
+		 //lru.new_key(addr);
 	 }
-	 return mp[u64];
+	 else
+	 {
+		 //lru.update(addr);
+	 }
+	 return mp[addr];
  }
- conn_info_t & conn_manager_t::find_insert(u32_t ip,uint16_t port)  //be aware,the adress may change after rehash
+ conn_info_t & conn_manager_t::find_insert(address_t addr)  //be aware,the adress may change after rehash
  {
-	 u64_t u64=0;
-	 u64=ip;
-	 u64<<=32u;
-	 u64|=port;
-	 unordered_map<u64_t,conn_info_t*>::iterator it=mp.find(u64);
+	 //u64_t u64=0;
+	 //u64=ip;
+	 //u64<<=32u;
+	 //u64|=port;
+	 unordered_map<address_t,conn_info_t*>::iterator it=mp.find(addr);
 	 if(it==mp.end())
 	 {
-		 mp[u64]=new conn_info_t;
+		 mp[addr]=new conn_info_t;
+		 //lru.new_key(addr);
 	 }
-	 return *mp[u64];
+	 else
+	 {
+		 //lru.update(addr);
+	 }
+	 return *mp[addr];
  }
- int conn_manager_t::erase(unordered_map<u64_t,conn_info_t*>::iterator erase_it)
+ int conn_manager_t::erase(unordered_map<address_t,conn_info_t*>::iterator erase_it)
  {
 		if(erase_it->second->state.server_current_state==server_ready)
 		{
@@ -423,8 +290,8 @@ int conn_manager_t::clear_inactive()
 }
 int conn_manager_t::clear_inactive0()
 {
-	 unordered_map<u64_t,conn_info_t*>::iterator it;
-	 unordered_map<u64_t,conn_info_t*>::iterator old_it;
+	 unordered_map<address_t,conn_info_t*>::iterator it;
+	 unordered_map<address_t,conn_info_t*>::iterator old_it;
 
 	if(disable_conn_clear) return 0;
 
@@ -457,14 +324,14 @@ int conn_manager_t::clear_inactive0()
 		{
 			it++;
 		}
-		else if(it->second->blob!=0&&it->second->blob->conv_manager.get_size() >0)
+		else if(it->second->blob!=0&&it->second->blob->conv_manager.s.get_size() >0)
 		{
 			assert(it->second->state.server_current_state==server_ready);
 			it++;
 		}
 		else
 		{
-			mylog(log_info,"[%s:%d]inactive conn cleared \n",my_ntoa(it->second->raw_info.recv_info.src_ip),it->second->raw_info.recv_info.src_port);
+			mylog(log_info,"[%s:%d]inactive conn cleared \n",it->second->raw_info.recv_info.new_src_ip.get_str1(),it->second->raw_info.recv_info.src_port);
 			old_it=it;
 			it++;
 			erase(old_it);
@@ -472,9 +339,9 @@ int conn_manager_t::clear_inactive0()
 		cnt++;
 	}
 	clear_it=it;
+
 	return 0;
 }
-
 
 
 
@@ -504,7 +371,7 @@ int send_bare(raw_info_t &raw_info,const char* data,int len)//send function with
 	memcpy(send_data_buf+sizeof(iv)+sizeof(padding)+1,data,len);
 	int new_len=len+sizeof(iv)+sizeof(padding)+1;
 
-	if(my_encrypt(send_data_buf,send_data_buf2,new_len,key)!=0)
+	if(my_encrypt(send_data_buf,send_data_buf2,new_len)!=0)
 	{
 		return -1;
 	}
@@ -520,7 +387,7 @@ int reserved_parse_bare(const char *input,int input_len,char* & data,int & len) 
 		mylog(log_debug,"input_len <0\n");
 		return -1;
 	}
-	if(my_decrypt(input,recv_data_buf,input_len,key)!=0)
+	if(my_decrypt(input,recv_data_buf,input_len)!=0)
 	{
 		mylog(log_debug,"decrypt_fail in recv bare\n");
 		return -1;
@@ -551,6 +418,7 @@ int recv_bare(raw_info_t &raw_info,char* & data,int & len)//recv function with e
 		//printf("recv_raw_fail in recv bare\n");
 		return -1;
 	}
+	mylog(log_trace,"data len=%d\n",len);
 	if ((raw_mode == mode_faketcp && (recv_info.syn == 1 || recv_info.ack != 1)))
 	{
 		mylog(log_debug,"unexpect packet type recv_info.syn=%d recv_info.ack=%d \n",recv_info.syn,recv_info.ack);
@@ -559,7 +427,7 @@ int recv_bare(raw_info_t &raw_info,char* & data,int & len)//recv function with e
 	return reserved_parse_bare(data,len,data,len);
 }
 
-int send_handshake(raw_info_t &raw_info,id_t id1,id_t id2,id_t id3)// a warp for send_bare for sending handshake(this is not tcp handshake) easily
+int send_handshake(raw_info_t &raw_info,my_id_t id1,my_id_t id2,my_id_t id3)// a warp for send_bare for sending handshake(this is not tcp handshake) easily
 {
 	packet_info_t &send_info=raw_info.send_info;
 	packet_info_t &recv_info=raw_info.recv_info;
@@ -600,7 +468,7 @@ int send_safer(conn_info_t &conn_info,char type,const char* data,int len)  //saf
 
 
 
-	id_t n_tmp_id=htonl(conn_info.my_id);
+	my_id_t n_tmp_id=htonl(conn_info.my_id);
 
 	memcpy(send_data_buf,&n_tmp_id,sizeof(n_tmp_id));
 
@@ -620,7 +488,7 @@ int send_safer(conn_info_t &conn_info,char type,const char* data,int len)  //saf
 
 	int new_len=len+sizeof(n_seq)+sizeof(n_tmp_id)*2+2;
 
-	if(my_encrypt(send_data_buf,send_data_buf2,new_len,key)!=0)
+	if(my_encrypt(send_data_buf,send_data_buf2,new_len)!=0)
 	{
 		return -1;
 	}
@@ -652,7 +520,7 @@ int reserved_parse_safer(conn_info_t &conn_info,const char * input,int input_len
 	 static char recv_data_buf[buf_len];
 
 	// char *recv_data_buf=recv_data_buf0; //fix strict alias warning
-	if(my_decrypt(input,recv_data_buf,input_len,key)!=0)
+	if(my_decrypt(input,recv_data_buf,input_len)!=0)
 	{
 		//printf("decrypt fail\n");
 		return -1;
@@ -662,18 +530,18 @@ int reserved_parse_safer(conn_info_t &conn_info,const char * input,int input_len
 
 	//char *a=recv_data_buf;
 	//id_t h_oppiste_id= ntohl (  *((id_t * )(recv_data_buf)) );
-	id_t h_oppsite_id;
+	my_id_t h_oppsite_id;
 	memcpy(&h_oppsite_id,recv_data_buf,sizeof(h_oppsite_id));
 	h_oppsite_id=ntohl(h_oppsite_id);
 
 	//id_t h_my_id= ntohl (  *((id_t * )(recv_data_buf+sizeof(id_t)))    );
-	id_t h_my_id;
-	memcpy(&h_my_id,recv_data_buf+sizeof(id_t),sizeof(h_my_id));
+	my_id_t h_my_id;
+	memcpy(&h_my_id,recv_data_buf+sizeof(my_id_t),sizeof(h_my_id));
 	h_my_id=ntohl(h_my_id);
 
 	//anti_replay_seq_t h_seq= ntoh64 (  *((anti_replay_seq_t * )(recv_data_buf  +sizeof(id_t) *2 ))   );
 	anti_replay_seq_t h_seq;
-	memcpy(&h_seq,recv_data_buf  +sizeof(id_t) *2 ,sizeof(h_seq));
+	memcpy(&h_seq,recv_data_buf  +sizeof(my_id_t) *2 ,sizeof(h_seq));
 	h_seq=ntoh64(h_seq);
 
 	if(h_oppsite_id!=conn_info.oppsite_id||h_my_id!=conn_info.my_id)
@@ -688,8 +556,8 @@ int reserved_parse_safer(conn_info_t &conn_info,const char * input,int input_len
 	}
 
 	//printf("recv _len %d\n ",recv_len);
-	data=recv_data_buf+sizeof(anti_replay_seq_t)+sizeof(id_t)*2;
-	len=input_len-(sizeof(anti_replay_seq_t)+sizeof(id_t)*2  );
+	data=recv_data_buf+sizeof(anti_replay_seq_t)+sizeof(my_id_t)*2;
+	len=input_len-(sizeof(anti_replay_seq_t)+sizeof(my_id_t)*2  );
 
 
 	if(data[0]!='h'&&data[0]!='d')
@@ -725,7 +593,8 @@ int reserved_parse_safer(conn_info_t &conn_info,const char * input,int input_len
 	}
 	else
 	{
-		assert(0==1);
+		mylog(log_fatal,"unknow hb_mode\n");
+		myexit(-1);
 	}
 
 

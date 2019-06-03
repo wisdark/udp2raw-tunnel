@@ -26,11 +26,9 @@ Release中提供了`amd64`、`x86`、`arm`、`mips_be`、`mips_le`的预编译bi
 
 ##### 对于windows和mac用户：
 
-可以把udp2raw运行在虚拟机上(网络必须是桥接模式)。
+可以用[这个repo](https://github.com/wangyu-/udp2raw-multiplatform)里的udp2raw，原生运行。
 
-另外可以参考：
-
-https://github.com/wangyu-/udp2raw-tunnel/wiki/在windows-mac上运行udp2raw客户端，带图形界面
+<del>可以把udp2raw运行在虚拟机上(网络必须是桥接模式)。可以参考： https://github.com/wangyu-/udp2raw-tunnel/wiki/在windows-mac上运行udp2raw客户端，带图形界面 </del>
 
 ##### 对于ios和游戏主机用户：
 
@@ -43,15 +41,11 @@ https://github.com/wangyu-/udp2raw-tunnel/wiki/在windows-mac上运行udp2raw客
 ### 模拟TCP3次握手
 模拟TCP3次握手，模拟seq ack过程。另外还模拟了一些tcp option：MSS,sackOk,TS,TS_ack,wscale，用来使流量看起来更像是由普通的linux tcp协议栈发送的。
 
-### 心跳保活、自动重连，连接快速恢复，单向链路失效检测
+### 心跳保活、自动重连，连接恢复
 心跳保活、自动重连，udp2raw重连可以恢复上次的连接，重连后上层连接继续有效，底层掉线上层不掉线。有效解决上层连接断开的问题。 （功能借鉴自[kcptun-raw](https://github.com/Chion82/kcptun-raw)）（**就算你拔掉网线重插，或者重新拨号获得新ip，上层应用也不会断线**）
 
-Client能用单倍的超时时间检测到单向链路的失效，不管是上行还是下行，只要有一个方向失效就能被client检测到。重连只需要client发起，就可以立即被server处理，不需要等到server端的连接超时后。
-
-对于有大量client的情况，对于不同client,server发送的心跳是错开时间发送的，不会因为短时间发送大量的心跳而造成拥塞和延迟抖动。
-
 ### 加密 防重放攻击
-用aes128cbc加密，md5/crc32做数据完整校验。用类似ipsec/openvpn的 replay window机制来防止重放攻击。
+用aes128cbc加密(或更弱的xor)，hmac-sha1(或更弱的md5/crc32/simple)做数据完整校验。用类似ipsec/openvpn的replay window机制来防止重放攻击。
 
 设计目标是，即使攻击者可以监听到tunnel的所有包，可以选择性丢弃tunnel的任意包，可以重放任意包；攻击者也没办法获得tunnel承载的任何数据，也没办法向tunnel的数据流中通过包构造/包重放插入任何数据。
 
@@ -65,8 +59,6 @@ NAT 穿透 ，tcp icmp udp模式都支持nat穿透。
 支持Openvz，配合finalspeed使用，可以在openvz上用tcp模式的finalspeed
 
 支持Openwrt，没有编译依赖，容易编译到任何平台上。
-
-epoll实现，高并发，除了回收过期连接外，所有操作的时间复杂度都跟连接数无关。回收过期连接的操做也是柔和进行的，不会因为消耗太多cpu时间造成延迟抖动。
 
 ### 关键词
 突破udp qos,突破udp屏蔽，openvpn tcp over tcp problem,openvpn over icmp,udp to icmp tunnel,udp to tcp tunnel,udp via icmp,udp via tcp
@@ -83,10 +75,10 @@ https://github.com/wangyu-/udp2raw-tunnel/releases
 
 ```
 在server端运行:
-./udp2raw_amd64 -s -l0.0.0.0:4096  -r127.0.0.1:7777   -a -k "passwd" --raw-mode faketcp   --cipher-mode xor
+./udp2raw_amd64 -s -l0.0.0.0:4096  -r127.0.0.1:7777   -k "passwd" --raw-mode faketcp   --cipher-mode xor  -a
 
 在client端运行:
-./udp2raw_amd64 -c -l0.0.0.0:3333  -r44.55.66.77:4096 -a -k "passwd" --raw-mode faketcp   --cipher-mode xor
+./udp2raw_amd64 -c -l0.0.0.0:3333  -r44.55.66.77:4096 -k "passwd" --raw-mode faketcp   --cipher-mode xor  -a
 ```
 (以上例子需要用root账号运行。 用非root运行udp2raw需要一些额外的步骤，具体方法请看 [这个](https://github.com/wangyu-/udp2raw-tunnel/wiki/run-udp2raw-as-non-root) 链接。用非root运行更安全)
 
@@ -106,9 +98,7 @@ https://github.com/wangyu-/udp2raw-tunnel/releases
 
 如果要在anroid上运行，请看[Android简明教程](/doc/android_guide.md)
 
-如果要在梅林固件的路由器上使用，添加`--lower-level auto` `--keep-rule`
-
-如果client和server无法连接，或者连接经常断开，请看一下`--seq-mode`的用法，尝试不同的seq-mode。
+`-a`选项会自动添加一条/几条iptables规则，udp2raw必须和相应的iptables规则配合才能稳定工作，一定要注意不要忘了`-a`(这是个常见错误)。 如果你不想让udp2raw自动添加iptables规则，可以自己手动添加相应的iptables规则(看一下`-g`选项)，然后以不带`-a`的方式运行udp2raw。
 
 # 进阶操作说明
 
@@ -119,14 +109,14 @@ git version:6e1df4b39f    build date:Oct 24 2017 09:21:15
 repository: https://github.com/wangyu-/udp2raw-tunnel
 
 usage:
-    run as client : ./this_program -c -l local_listen_ip:local_port -r server_ip:server_port  [options]
-    run as server : ./this_program -s -l server_listen_ip:server_port -r remote_ip:remote_port  [options]
+    run as client : ./this_program -c -l local_listen_ip:local_port -r server_address:server_port  [options]
+    run as server : ./this_program -s -l server_listen_ip:server_port -r remote_address:remote_port  [options]
 
 common options,these options must be same on both side:
     --raw-mode            <string>        avaliable values:faketcp(default),udp,icmp
     -k,--key              <string>        password to gen symetric key,default:"secret key"
     --cipher-mode         <string>        avaliable values:aes128cbc(default),xor,none
-    --auth-mode           <string>        avaliable values:md5(default),crc32,simple,none
+    --auth-mode           <string>        avaliable values:hmac_sha1,md5(default),crc32,simple,none
     -a,--auto-rule                        auto add (and delete) iptables rule
     -g,--gen-rule                         generate iptables rule then exit,so that you can copy and
                                           add it manually.overrides -a
@@ -170,7 +160,7 @@ other options:
 
 用raw收发udp包也类似，只是内核回复的是icmp unreachable。而用raw 收发icmp，内核会自动回复icmp echo。都需要相应的iptables规则。
 ### `--cipher-mode` 和 `--auth-mode` 
-如果要最大的安全性建议用aes128cbc+md5。如果要运行在路由器上，建议用xor+simple，可以节省CPU。但是注意xor+simple只能骗过防火墙的包检测，不能防止真正的攻击者。
+如果要最大的安全性建议用aes128cbc+hmac_sha1。如果要运行在路由器上，建议用xor+simple，可以节省CPU。但是注意xor+simple只能骗过防火墙的包检测，不能防止真正的攻击者。
 
 ### `--seq-mode`
 facktcp模式并没有模拟tcp的全部。所以理论上有办法把faketcp和真正的tcp流量区分开来（虽然大部分ISP不太可能做这种程度的包检测）。seq-mode可以改变一些seq ack的行为。如果遇到了连接问题，可以尝试更改。在我这边的移动线路用3种模式都没问题。

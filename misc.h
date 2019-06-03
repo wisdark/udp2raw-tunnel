@@ -15,10 +15,16 @@
 
 extern int hb_mode;
 extern int hb_len;
+extern char hb_buf[buf_len];
+
 extern int mtu_warn;
 
 extern int max_rst_allowed;
 extern int max_rst_to_show;
+
+extern int enable_dns_resolve;
+
+extern int ttl_value;
 
 
 const u32_t max_handshake_conn_num=10000;
@@ -58,7 +64,7 @@ const uint32_t server_conn_timeout=conv_timeout+60000;//ms. this should be 60s+ 
 const u32_t iptables_rule_keep_interval=20;//unit: second;
 
 enum server_current_state_t {server_idle=0,server_handshake1,server_ready};  //server state machine
-enum client_current_state_t {client_idle=0,client_tcp_handshake,client_handshake1,client_handshake2,client_ready};//client state machine
+enum client_current_state_t {client_idle=0,client_tcp_handshake,client_handshake1,client_handshake2,client_ready,client_tcp_handshake_dummy};//client state machine
 
 enum raw_mode_t{mode_faketcp=0,mode_udp,mode_icmp,mode_end};
 enum program_mode_t {unset_mode=0,client_mode,server_mode};
@@ -69,13 +75,21 @@ union current_state_t
 	client_current_state_t client_current_state;
 };
 
-extern char local_ip[100], remote_ip[100],source_ip[100];//local_ip is for -l option,remote_ip for -r option,source for --source-ip
-extern u32_t local_ip_uint32,remote_ip_uint32,source_ip_uint32;//convert from last line.
-extern int local_port , remote_port,source_port;//similiar to local_ip  remote_ip,buf for port.source_port=0 indicates --source-port is not enabled
+//extern char remote_address[max_address_len];
+//extern char local_ip[100], remote_ip[100],source_ip[100];//local_ip is for -l option,remote_ip for -r option,source for --source-ip
+//extern u32_t local_ip_uint32,remote_ip_uint32,source_ip_uint32;//convert from last line.
+//extern int local_port , remote_port,source_port;//similiar to local_ip  remote_ip,buf for port.source_port=0 indicates --source-port is not enabled
 
+extern address_t local_addr,remote_addr,source_addr;
+
+extern my_ip_t bind_addr;
+
+extern int bind_addr_used;
 extern int force_source_ip; //if --source-ip is enabled
+extern int force_source_port;
+extern int source_port;
 
-extern id_t const_id;//an id used for connection recovery,its generated randomly,it never change since its generated
+extern my_id_t const_id;//an id used for connection recovery,its generated randomly,it never change since its generated
 
 extern int udp_fd;  //for client only. client use this fd to listen and handle udp connection
 extern int bind_fd; //bind only,never send or recv.  its just a dummy fd for bind,so that other program wont occupy the same port
@@ -101,6 +115,7 @@ extern char fifo_file[1000];
 
 
 extern raw_mode_t raw_mode;
+extern u32_t raw_ip_version;
 
 extern program_mode_t program_mode;
 extern unordered_map<int, const char*> raw_mode_tostring ;
@@ -108,7 +123,7 @@ extern unordered_map<int, const char*> raw_mode_tostring ;
 extern int about_to_exit;
 
 extern int socket_buf_size;
-extern int force_socket_buf;
+
 
 extern pthread_t keep_thread;
 extern int keep_thread_running;
